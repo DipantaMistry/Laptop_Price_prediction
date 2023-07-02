@@ -1,0 +1,657 @@
+---
+title: "Laptop_price_prediction_codes"
+output: html_notebook
+---
+
+
+## Introduction:
+
+In our project, we aimed to develop a predictive model for laptop price estimation. By using machine learning techniques, we analyzed laptop features to make accurate price predictions.
+
+We explored different regression-based models, including multi-linear regression, SVR, decision tree, random forest, and XGBoost. Our goal was to understand how factors like processor speed, RAM, storage capacity, brand, and screen size influence laptop prices.
+
+The outcome of our project has practical implications for consumers and industry professionals. By identifying the most accurate model, we can provide insights into the drivers of laptop prices. This helps consumers make informed decisions, aids retailers in pricing strategies, and assists manufacturers in optimizing laptop pricing.
+
+Through our research, we contribute to the field of laptop price prediction and provide guidance to industry stakeholders. Our project showcases the power of machine learning in understanding laptop pricing trends.
+
+Overall, as students, our project allows us to explore data analysis and machine learning while addressing a real-world problem. We are excited to share our findings and contribute to the knowledge of laptop pricing
+
+
+
+
+
+
+#### Import libaries
+
+```{r}
+
+library(tidyverse)
+library(dplyr)
+library(stringr)
+library(corrplot)
+library(car)
+library(caTools)
+library(caret)
+library(e1071)
+library(rpart)
+library(randomForest)
+library(MASS)
+library(xgboost)
+
+```
+
+
+#### Import dataset
+
+```{r}
+data = read.csv("laptopData.csv")
+```
+#### Learning about data insights
+```{r}
+head(data)
+summary(data)
+str(data)
+```
+
+#### check for null values
+```{r}
+null_values = is.na(data)
+table(null_values)
+```
+#### Removing unnamed column
+```{r}
+dataset = data[ ,-1]
+```
+#### Removing null values
+
+```{r}
+null_counts = colSums(is.na(dataset))
+print(null_counts)
+
+dataset= drop_na(dataset)
+```
+#### duplicate values
+```{r}
+dataset = distinct(dataset)
+```
+
+#### printing the unique values for all the columns
+
+```{r}
+d = sapply(colnames(dataset), function(col) unique(dataset[[col]]))
+print(d)
+```
+
+#As there is no independent company named Vero but its parent is aspire, we will be renaming any location where Vero is present to Aspire.
+
+```{r}
+dataset$Company = ifelse(dataset$Company == "Vero", "Aspire", dataset$Company)
+```
+
+
+#### "?" is present in inches column, droppping those rows
+
+```{r}
+dataset = dataset %>% 
+  filter(Inches!='?')
+```
+
+
+#### clean the screen resolution column by extracting only resolution values
+
+
+```{r}
+dataset$ScreenResolution = sapply(dataset$ScreenResolution, function(x) tail(strsplit(x, " ")[[1]], 1))
+```
+
+
+#### clean the cpu column
+
+
+```{r}
+dataset = dataset %>%
+  mutate(`Cpu Name` = sapply(strsplit(Cpu, " "), function(x) paste(x[1:3], collapse = " ")))
+
+fetch_processor = function(text) {
+  if (text == 'Intel Core i7' || text == 'Intel Core i5' || text == 'Intel Core i3') {
+    return(text)
+  } else {
+    if (strsplit(text, " ")[[1]][1] == 'Intel') {
+      return('Other Intel Processor')
+    } else {
+      return('AMD Processor')
+    }
+  }
+}
+
+dataset$`Cpu brand` = sapply(dataset$`Cpu Name`, fetch_processor)
+
+```
+
+#### from cpu column we are going to extract only processing speeds
+
+
+```{r}
+dataset$ProcessSpeed = sapply(dataset$Cpu, function(x) as.numeric(substr(strsplit(x, " ")[[1]][length(strsplit(x, " ")[[1]])], 1, nchar(strsplit(x, " ")[[1]][length(strsplit(x, " ")[[1]])]) - 3)))
+dataset = dataset[-5]
+dataset = dataset[-11]
+```
+
+
+#### cleaning ram column, by changing its datatype to int
+
+```{r}
+dataset$Ram = as.integer(substr(dataset$Ram,1, nchar(dataset$Ram)-2))
+
+```
+
+
+#### cleaning memory column
+#we are going to create 2 columns, one as storage type and rom 
+
+```{r}
+unique_values = unique(dataset$Memory)
+
+
+print(unique_values)
+```
+
+
+#Removing the values with '?'
+
+```{r}
+dataset = dataset %>% 
+  filter(Memory !='?')
+```
+
+
+#Replace patterns in Memory column
+
+```{r}
+dataset$Memory = gsub("\\.0", "", dataset$Memory)
+dataset$Memory = gsub("GB", "", dataset$Memory)
+dataset$Memory = gsub("TB", "000", dataset$Memory)
+```
+
+
+#Split Memory column into two columns
+
+```{r}
+dataset = dataset %>%
+  separate(Memory, into = c("first", "second"), sep = "\\+", fill = "right") %>%
+  mutate(first = str_trim(first),
+         second = str_trim(second))
+```
+
+#Create indicator variables for each storage type
+
+
+```{r}
+dataset = dataset %>%
+  mutate(Layer1HDD = if_else(str_detect(first, "HDD"), 1, 0),
+         Layer1SSD = if_else(str_detect(first, "SSD"), 1, 0),
+         Layer1Hybrid = if_else(str_detect(first, "Hybrid"), 1, 0),
+         Layer1Flash_Storage = if_else(str_detect(first, "Flash Storage"), 1, 0),
+         first = as.integer(gsub("\\D", "", first)),
+         second = as.integer(gsub("\\D", "", second)),
+         second = if_else(is.na(second), 0, second),
+         Layer2HDD = if_else(str_detect(second, "HDD"), 1, 0),
+         Layer2SSD = if_else(str_detect(second, "SSD"), 1, 0),
+         Layer2Hybrid = if_else(str_detect(second, "Hybrid"), 1, 0),
+         Layer2Flash_Storage = if_else(str_detect(second, "Flash Storage"), 1, 0))
+
+```
+
+
+#Calculate storage quantities
+
+```{r}
+dataset = dataset %>%
+  mutate(HDD = first * Layer1HDD + second * Layer2HDD,
+         SSD = first * Layer1SSD + second * Layer2SSD,
+         Hybrid = first * Layer1Hybrid + second * Layer2Hybrid,
+         Flash_Storage = first * Layer1Flash_Storage + second * Layer2Flash_Storage)
+```
+
+
+#Remove unnecessary columns
+
+```{r}
+dataset = subset(dataset, select = -c(first, second, Layer1HDD, Layer1SSD, Layer1Hybrid, Layer1Flash_Storage, Layer2HDD, Layer2SSD, Layer2Hybrid, Layer2Flash_Storage))
+
+```
+
+
+#### Cleaning GPU column
+
+```{r}
+table(dataset$Gpu)
+```
+
+#Create a new 'Gpu brand' column
+
+```{r}
+dataset$Gpu_brand <- sapply(strsplit(as.character(dataset$Gpu), " "), function(x) x[1])
+
+table(dataset$Gpu_brand)
+
+dataset = dataset %>% 
+  filter(Gpu_brand != 'ARM')
+```
+
+
+#drop Gpu column
+
+```{r}
+dataset = dataset[-6]
+```
+
+#### cleaning Os coloumn
+
+```{r}
+cat_os = function(inp) {
+  if (inp %in% c("Windows 10", "Windows 7", "Windows 10 S")) {
+    return("Windows")
+  } else if (inp %in% c("macOS", "Mac OS X")) {
+    return("Mac")
+  } else {
+    return("Others/No OS/Linux")
+  }
+}
+
+dataset$OS_category = sapply(dataset$OpSys, cat_os)
+
+dataset = dataset[-6]
+```
+
+
+#### Cleaning weight column
+
+```{r}
+u = unique(dataset$Weight)
+print(u)
+
+dataset = dataset %>% 
+  filter(Weight != '?')
+```
+
+#### Remove last two characters and convert 'Weight' column to float
+
+```{r}
+dataset$Weight <- as.numeric(substr(dataset$Weight, 1, nchar(dataset$Weight) - 2))
+```
+
+
+#### Convert 'Inches' column to float
+
+```{r}
+dataset$Inches = as.numeric(dataset$Inches)
+
+summary(dataset)
+```
+
+
+#----------------------------------------------------------------------------------------------------
+
+
+##Analysis and Visualization
+
+
+#### 1.which is the most used storage type in the dataset
+```{r}
+memory_counts = count(data, Memory)
+
+# Print the value counts
+print(memory_counts)
+```
+#Ans: SSD
+
+#### correlation between price and storage type
+
+```{r}
+price_correlation = cor(dataset$Price, dataset[10:13])
+```
+
+#### Print the correlation coefficients for 'Price'
+
+```{r}
+print(price_correlation)
+```
+
+#### 4.How does the weight of laptops affect their price?
+
+```{r}
+ggplot(data = dataset, aes(x = Weight, y = Price, color = Price)) +
+  geom_point() +
+  labs(x = "Weight", y = "Price", title = "Weight vs Price") +
+  scale_color_gradient(low = "blue", high = "red")
+```
+
+
+#### common operating system
+
+```{r}
+ggplot(data = dataset,aes(x = OS_category, fill= OS_category))+
+  geom_bar()+
+  xlab('Operating System')+
+  ylab('frequency')+
+  ggtitle("Bar plot of OS_category")
+```
+
+#### 1.How does the type of laptop affect its price?
+
+```{r}
+ggplot(data = dataset, aes(x = TypeName, y = Price, fill = TypeName)) +
+  geom_boxplot() +
+  labs(x = "TypeName", y = "Price", title = "TypeName vs Price")
+```  
+
+
+
+
+#### 2.How does the ram of laptop affect its price?
+
+```{r}
+ggplot(data = dataset, aes(x = Ram, y = Price, color = Price)) +
+  geom_point() +
+  labs(x = "Ram", y = "Price", title = "Ram vs Price") +
+  scale_color_gradient(low = "blue", high = "red")
+```
+
+#### 3.How does the Gpu brand of laptop affect its price?
+
+```{r}
+ggplot(data = dataset, aes(x = Gpu_brand, y = Price, color = Price)) +
+  geom_point() +
+  labs(x = "Gpu_brand", y = "Price", title = "Gpu brand vs Price") +
+  scale_color_gradient(low = "blue", high = "red")
+```
+
+#### 4.How does the Cpu brand of laptop affect its price?
+
+```{r}
+dataset = dataset %>%
+  rename_with(~ "Cpu_brand", .cols = "Cpu brand")
+
+ggplot(data = dataset, aes(x = Cpu_brand, y = Price, color = Cpu_brand)) +
+  geom_boxplot() +
+  labs(x = "Cpu_brand", y = "Price", title = "Cpu brand vs Price") 
+```
+
+#### 5.Company name Vs Price
+
+```{r}
+ggplot(data= dataset, aes(x= Company, y= Price, fill= Company))+
+  geom_boxplot()+
+  ggtitle("Company VS Price")
+```
+
+#### 6.How does the processing speed of laptop affect its price?
+
+```{r}
+ggplot(data = dataset, aes(x = ProcessSpeed, y = Price, color = Price)) +
+   geom_point() +
+   labs(x = "ProcessSpeed", y = "Price", title = "Weight vs Price") +
+   scale_color_gradient(low = "blue", high = "red")
+```
+
+#### 7. How does Operating system effects the price
+
+```{r}
+ggplot(data = dataset, aes(x = OS_category, y = Price, color = OS_category)) +
+  geom_boxplot() +
+  labs(x = "OS_category", y = "Price", title = "OS_category vs Price") 
+```
+
+#### 8.How does the type of laptop affect its price?
+
+
+```{r}
+ggplot(data = dataset, aes(x = TypeName, y = Price, fill = TypeName)) +
+  geom_point(position = position_jitter(width = 0.2), size = 3) +
+  theme_minimal() +
+  labs(x = "Laptop Type", y = "Price") +
+  guides(fill = FALSE) +
+  theme(legend.position = "none")
+```
+
+### Price density
+
+```{r}
+ggplot(dataset, aes(x = Price)) +
+  geom_density(aes(fill = "Density"), alpha = 0.5) +
+  geom_bar(aes(y = ..density.., fill = "Count"), alpha = 0.5, stat = "density") +
+  scale_fill_manual(values = c("Density" = "blue", "Count" = "red")) +
+  labs(title = "Price Distribution with Density", x = "Price", y = "Density/Count") +
+  theme_minimal()
+```
+As price density is skewed and I'm trying to fit a regression model, I would like to to make a log transformation to make it normal.
+
+#### plot using log transformation
+
+```{r}
+ggplot(dataset, aes(x = log(Price))) +
+  geom_freqpoly(binwidth = 0.2, size = .8, color = "red") +
+  geom_histogram(binwidth = 0.2, fill = "lightblue", color = "black") +
+  xlab("Log(Price)") +
+  ylab("Frequency / Count") +
+  ggtitle("Distribution of Logarithm of Price")
+```
+
+#### Using log transformation in price column
+
+```{r}
+dataset$Price = log(dataset$Price)
+```
+
+
+#### Encoding the catagorical variable
+```{r}
+# Specify the categorical columns
+catcols <- c("ScreenResolution", "Company", "TypeName", "OS_category", "Cpu_brand", "Gpu_brand")
+
+# Encode categorical variables as integers using label encoding
+for (col in catcols) {
+  dataset[[col]] <- as.integer(factor(dataset[[col]]))
+}
+
+```
+
+#### heatmap of the correlation matrix
+
+```{r}
+# Compute the correlation matrix
+cor_matrix <- cor(dataset)
+
+# Create a heatmap of the correlation matrix
+corrplot(cor_matrix, method = "color", type = "full", tl.cex = 0.8)
+```
+### Checking for multicollinearity
+
+#### Compute the variance inflation factors (VIF)
+
+```{r}
+vif_values <- vif(lm(Price ~ ., data = dataset))
+
+# Print the VIF values
+print(vif_values)
+```
+
+#-------------------------------------------------------------------------------------------
+
+## Building Models
+
+#### Removing outliers using robust regression
+
+```{r}
+library(MASS)
+model <- rlm(Price ~ ., data = dataset)
+residuals <- residuals(model)
+
+
+mad <- median(abs(residuals - median(residuals)))
+threshold <- 3 * mad
+outliers <- which(abs(residuals) > threshold)
+
+
+data_no_outliers <- dataset %>%
+  filter(!row_number() %in% outliers)
+```
+
+#### Creating training set and test set
+
+```{r}
+
+set.seed(123)
+split = sample.split(data_no_outliers$Price, SplitRatio = .85)
+
+training_set = subset(data_no_outliers, split== TRUE)
+test_set = subset(data_no_outliers, split == FALSE)
+y_test = test_set$Price
+
+
+```
+
+#### 1. Linear regression
+
+```{r}
+reg_1 = lm(formula = Price~.-Hybrid -Weight -TypeName,
+           data = training_set)
+
+summary(reg_1)
+
+#printing adjusted R-squared
+
+summary(reg_1)$adj.r.squared
+
+
+y_pred = predict(reg_1, newdata= test_set)
+
+```
+
+
+
+#### 2.SVR
+
+```{r}
+reg_2 = svm(formula= Price~.,
+            data= training_set,
+            type= 'eps-regression',
+            kernel= 'radial',
+            sigma= 0.1,
+            C = 1)
+#Prediction 
+
+y_pred = predict(reg_2, newdata= test_set)
+
+# Calculate R-squared score
+r2_score = R2(y_test, y_pred)
+
+# Calculate mean absolute error
+mae = MAE(y_test, y_pred)
+
+# Print R-squared score and mean absolute error
+print(paste("R2 score:", r2_score))
+print(paste("MAE:", mae))
+```
+
+
+#### 3.Decision Tree
+
+```{r}
+reg_3 = rpart(formula = Price~.,
+              data = training_set,
+               control = rpart.control(minsplit = 50, cp=0.01),
+              )
+
+#Prediction 
+
+y_pred = predict(reg_3, newdata= test_set)
+
+# Calculate R-squared score
+r2_score = R2(y_test, y_pred)
+
+# Calculate mean absolute error
+mae = MAE(y_test, y_pred)
+
+# Print R-squared score and mean absolute error
+print(paste("R2 score:", r2_score))
+print(paste("MAE:", mae))
+```
+
+#### 4.Random Forest
+
+```{r}
+set.seed(1234)
+reg_4 = randomForest(
+  x= training_set[-7],
+  y= training_set$Price,
+  ntree= 200,
+  mtry = 4,
+  
+)
+
+#prediction
+
+y_pred = predict(reg_4, newdata = test_set)
+
+#calculate R2 score
+
+r2_score = R2(y_pred, y_test)
+
+#calculate MAE score
+
+mae = MAE(y_pred, y_test)
+
+#print R2 and mae score
+
+print(paste("R2 score:", r2_score))
+print(paste("MAE Score:", mae))
+```
+
+
+
+
+#### 6.XGBoost
+
+```{r}
+reg_6 = xgboost(data = as.matrix(training_set[-7]), label = training_set$Price, nrounds = 100)
+
+y_pred = predict(reg_5, newdata =as.matrix(test_set[-7]))
+
+
+#calculate R2 score
+
+r2_score = R2(y_pred, y_test)
+
+#calculate MAE score
+
+mae = MAE(y_pred, y_test)
+
+#print R2 and mae score
+
+print(paste("R2 score:", r2_score))
+print(paste("MAE Score:", mae))
+
+```
+
+
+#### Comparison between True value and predicted value using XGBoost
+
+```{r}
+comparison = data.frame(predicted= exp(y_pred), True= exp(y_test))
+print(comparison)
+```
+## CONCLUSION
+
+our project focused on predicting laptop prices using various machine learning models such as multi-linear regression, Support Vector Regression (SVR), decision tree, random forest, and XGBoost. After extensive analysis and evaluation, we found that the XGBoost model outperformed the other models in terms of accuracy and predictive power.
+
+The XGBoost model demonstrated superior performance by effectively capturing the complex relationships between the laptop features and their corresponding prices. Its ability to handle non-linear relationships and feature interactions allowed it to make more accurate predictions compared to the other models.
+
+While multi-linear regression, SVR, decision tree, and random forest models also provided reasonable results, the XGBoost model consistently exhibited higher accuracy and better overall performance. Its ensemble-based approach and optimization techniques enabled it to effectively handle both numerical and categorical features, providing more robust predictions.
+
+It's worth noting that the choice of the most suitable model may depend on factors such as the size of the dataset, the specific characteristics of the laptop features, and the desired trade-off between interpretability and accuracy. However, in our project, the XGBoost model emerged as the most accurate and reliable choice.
+
+The findings of our project highlight the significance of utilizing advanced machine learning algorithms, such as XGBoost, for predicting laptop prices. These models can offer valuable insights to consumers, retailers, and manufacturers, aiding in decision-making processes related to pricing, marketing, and product development.
+
+Overall, our project demonstrates that the XGBoost model is a powerful tool for accurately predicting laptop prices, providing a foundation for further research and application in the domain of laptop pricing analysis.
