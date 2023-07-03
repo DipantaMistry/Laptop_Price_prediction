@@ -1,6 +1,6 @@
 ---
-title: "Laptop_price_prediction_codes"
-output: pdf_notebook
+title: "Laptop Price Prediction"
+output: pdf_document
 ---
 
 
@@ -23,6 +23,8 @@ Overall, as students, our project allows us to explore data analysis and machine
 
 #### Import libaries
 
+
+
 ```{r}
 
 library(tidyverse)
@@ -41,7 +43,7 @@ library(xgboost)
 ```
 
 
-#### Import dataset
+#### Import dataset  
 
 ```{r}
 data = read.csv("laptopData.csv")
@@ -52,13 +54,12 @@ head(data)
 summary(data)
 str(data)
 ```
-
 #### check for null values
 ```{r}
 null_values = is.na(data)
 table(null_values)
 ```
-#### Removing unnamed column
+* Removing unnamed column
 ```{r}
 dataset = data[ ,-1]
 ```
@@ -297,15 +298,6 @@ summary(dataset)
 ##Analysis and Visualization
 
 
-#### 1.which is the most used storage type in the dataset
-```{r}
-memory_counts = count(data, Memory)
-
-# Print the value counts
-print(memory_counts)
-```
-#Ans: SSD
-
 #### correlation between price and storage type
 
 ```{r}
@@ -320,7 +312,7 @@ print(price_correlation)
 
 #### 4.How does the weight of laptops affect their price?
 
-```{r}
+```{r, fig.align='center'}
 ggplot(data = dataset, aes(x = Weight, y = Price, color = Price)) +
   geom_point() +
   labs(x = "Weight", y = "Price", title = "Weight vs Price") +
@@ -330,7 +322,7 @@ ggplot(data = dataset, aes(x = Weight, y = Price, color = Price)) +
 
 #### common operating system
 
-```{r}
+```{r, fig.align='center'}
 ggplot(data = dataset,aes(x = OS_category, fill= OS_category))+
   geom_bar()+
   xlab('Operating System')+
@@ -338,9 +330,14 @@ ggplot(data = dataset,aes(x = OS_category, fill= OS_category))+
   ggtitle("Bar plot of OS_category")
 ```
 
+
+
 #### 1.How does the type of laptop affect its price?
 
-```{r}
+
+
+
+```{r, fig.align='center'}
 ggplot(data = dataset, aes(x = TypeName, y = Price, fill = TypeName)) +
   geom_boxplot() +
   labs(x = "TypeName", y = "Price", title = "TypeName vs Price")
@@ -351,25 +348,28 @@ ggplot(data = dataset, aes(x = TypeName, y = Price, fill = TypeName)) +
 
 #### 2.How does the ram of laptop affect its price?
 
-```{r}
+
+
+```{r, fig.align='center'}
 ggplot(data = dataset, aes(x = Ram, y = Price, color = Price)) +
   geom_point() +
   labs(x = "Ram", y = "Price", title = "Ram vs Price") +
   scale_color_gradient(low = "blue", high = "red")
 ```
-
 #### 3.How does the Gpu brand of laptop affect its price?
 
-```{r}
+
+
+```{r, fig.align='center'}
 ggplot(data = dataset, aes(x = Gpu_brand, y = Price, color = Price)) +
   geom_point() +
   labs(x = "Gpu_brand", y = "Price", title = "Gpu brand vs Price") +
   scale_color_gradient(low = "blue", high = "red")
 ```
-
 #### 4.How does the Cpu brand of laptop affect its price?
 
-```{r}
+
+```{r, fig.align='center'}
 dataset = dataset %>%
   rename_with(~ "Cpu_brand", .cols = "Cpu brand")
 
@@ -378,32 +378,44 @@ ggplot(data = dataset, aes(x = Cpu_brand, y = Price, color = Cpu_brand)) +
   labs(x = "Cpu_brand", y = "Price", title = "Cpu brand vs Price") 
 ```
 
+
 #### 5.Company name Vs Price
 
-```{r}
+
+
+```{r, fig.align='center'}
 ggplot(data= dataset, aes(x= Company, y= Price, fill= Company))+
   geom_boxplot()+
-  ggtitle("Company VS Price")
+  ggtitle("Company VS Price")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
+
 
 #### 6.How does the processing speed of laptop affect its price?
 
-```{r}
+
+
+```{r, fig.align='center'}
 ggplot(data = dataset, aes(x = ProcessSpeed, y = Price, color = Price)) +
    geom_point() +
-   labs(x = "ProcessSpeed", y = "Price", title = "Weight vs Price") +
+   labs(x = "ProcessSpeed", y = "Price", title = "processing speed vs Price") +
    scale_color_gradient(low = "blue", high = "red")
 ```
 
 #### 7. How does Operating system effects the price
 
-```{r}
+
+
+
+```{r, fig.align='center'}
 ggplot(data = dataset, aes(x = OS_category, y = Price, color = OS_category)) +
   geom_boxplot() +
   labs(x = "OS_category", y = "Price", title = "OS_category vs Price") 
 ```
 
+
 #### 8.How does the type of laptop affect its price?
+
 
 
 ```{r}
@@ -417,6 +429,8 @@ ggplot(data = dataset, aes(x = TypeName, y = Price, fill = TypeName)) +
 
 ### Price density
 
+
+
 ```{r}
 ggplot(dataset, aes(x = Price)) +
   geom_density(aes(fill = "Density"), alpha = 0.5) +
@@ -429,6 +443,8 @@ As price density is skewed and I'm trying to fit a regression model, I would lik
 
 #### plot using log transformation
 
+
+
 ```{r}
 ggplot(dataset, aes(x = log(Price))) +
   geom_freqpoly(binwidth = 0.2, size = .8, color = "red") +
@@ -440,12 +456,18 @@ ggplot(dataset, aes(x = log(Price))) +
 
 #### Using log transformation in price column
 
+
+
+
 ```{r}
 dataset$Price = log(dataset$Price)
 ```
 
 
 #### Encoding the catagorical variable
+
+
+
 ```{r}
 # Specify the categorical columns
 catcols <- c("ScreenResolution", "Company", "TypeName", "OS_category", "Cpu_brand", "Gpu_brand")
@@ -459,7 +481,10 @@ for (col in catcols) {
 
 #### heatmap of the correlation matrix
 
-```{r}
+
+
+
+```{r, fig.align='center'}
 # Compute the correlation matrix
 cor_matrix <- cor(dataset)
 
@@ -469,6 +494,9 @@ corrplot(cor_matrix, method = "color", type = "full", tl.cex = 0.8)
 ### Checking for multicollinearity
 
 #### Compute the variance inflation factors (VIF)
+
+
+
 
 ```{r}
 vif_values <- vif(lm(Price ~ ., data = dataset))
@@ -481,24 +509,30 @@ print(vif_values)
 
 ## Building Models
 
-#### Removing outliers using robust regression
+* Removing outliers using robust regression
+
+
 
 ```{r}
 library(MASS)
-model <- rlm(Price ~ ., data = dataset)
-residuals <- residuals(model)
+model = rlm(Price ~ ., data = dataset)
+residuals = residuals(model)
 
 
-mad <- median(abs(residuals - median(residuals)))
-threshold <- 3 * mad
-outliers <- which(abs(residuals) > threshold)
+mad = median(abs(residuals - median(residuals)))
+threshold = 3 * mad
+outliers = which(abs(residuals) > threshold)
 
 
-data_no_outliers <- dataset %>%
+data_no_outliers = dataset %>%
   filter(!row_number() %in% outliers)
 ```
 
-#### Creating training set and test set
+
+
+* Creating training set and test set
+
+
 
 ```{r}
 
@@ -512,7 +546,12 @@ y_test = test_set$Price
 
 ```
 
-#### 1. Linear regression
+
+
+
+* 1. Linear regression
+
+
 
 ```{r}
 reg_1 = lm(formula = Price~.-Hybrid -Weight -TypeName,
@@ -531,7 +570,12 @@ y_pred = predict(reg_1, newdata= test_set)
 
 
 
-#### 2.SVR
+
+
+* 2.SVR
+
+
+
 
 ```{r}
 reg_2 = svm(formula= Price~.,
@@ -556,7 +600,11 @@ print(paste("MAE:", mae))
 ```
 
 
-#### 3.Decision Tree
+
+
+* 3.Decision Tree
+
+
 
 ```{r}
 reg_3 = rpart(formula = Price~.,
@@ -579,7 +627,11 @@ print(paste("R2 score:", r2_score))
 print(paste("MAE:", mae))
 ```
 
-#### 4.Random Forest
+
+
+* 4.Random Forest
+
+
 
 ```{r}
 set.seed(1234)
@@ -612,10 +664,12 @@ print(paste("MAE Score:", mae))
 
 
 
-#### 6.XGBoost
+* 5.XGBoost
+
+
 
 ```{r}
-reg_6 = xgboost(data = as.matrix(training_set[-7]), label = training_set$Price, nrounds = 100)
+reg_5 = xgboost(data = as.matrix(training_set[-7]), label = training_set$Price, nrounds = 50)
 
 y_pred = predict(reg_5, newdata =as.matrix(test_set[-7]))
 
@@ -636,12 +690,17 @@ print(paste("MAE Score:", mae))
 ```
 
 
-#### Comparison between True value and predicted value using XGBoost
++ Comparison between True value and predicted value using XGBoost
+
+
 
 ```{r}
 comparison = data.frame(predicted= exp(y_pred), True= exp(y_test))
 print(comparison)
 ```
+
+
+
 ## CONCLUSION
 
 our project focused on predicting laptop prices using various machine learning models such as multi-linear regression, Support Vector Regression (SVR), decision tree, random forest, and XGBoost. After extensive analysis and evaluation, we found that the XGBoost model outperformed the other models in terms of accuracy and predictive power.
